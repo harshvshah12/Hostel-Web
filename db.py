@@ -556,6 +556,31 @@ class Database:
         self.execute("UPDATE managers SET pin = %s WHERE email = %s", (hashed, email.strip()))
 
     # --- RESIDENT METHODS ---
+    def get_owner_dashboard_stats(self):
+        """Return owner dashboard metrics without loading every resident and order."""
+        conn = self.get_connection()
+        cur = None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*), COALESCE(SUM(expenditures), 0) FROM residents"
+            )
+            resident_row = cur.fetchone()
+            cur.execute(
+                "SELECT COUNT(*), COALESCE(SUM(salary), 0) FROM workers"
+            )
+            worker_row = cur.fetchone()
+            return {
+                "residents": int(resident_row[0] or 0),
+                "totalincome": float(resident_row[1] or 0),
+                "workers": int(worker_row[0] or 0),
+                "totalsalary": float(worker_row[1] or 0),
+            }
+        finally:
+            if cur is not None:
+                cur.close()
+            conn.close()
+
     def get_residents(self):
         rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures, id FROM residents ORDER BY id ASC")
         residents = []
