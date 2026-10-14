@@ -665,13 +665,51 @@ class Database:
         return True, "Resident registered successfully."
 
     def delete_resident(self, name, pin=None, email=None):
-        """Delete resident record."""
-        if email:
-            self.execute("DELETE FROM residents WHERE email = %s", (email.strip(),))
-        elif name and pin:
-            self.execute("DELETE FROM residents WHERE name = %s AND pin = %s", (name.strip(), str(pin).strip()))
-        elif name:
-            self.execute("DELETE FROM residents WHERE name = %s", (name.strip(),))
+        """Delete resident and release its room occupancy count atomically."""
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.cursor()
+                if email:
+                    cur.execute(self._format_query(
+                        "SELECT room_type FROM residents WHERE email = %s"
+                    ), (email.strip(),))
+                    resident = cur.fetchone()
+                    if resident and resident[0] and resident[0] != "None":
+                        cur.execute(self._format_query(
+                            "UPDATE rooms SET book_rooms = CASE WHEN book_rooms > 0 THEN book_rooms - 1 ELSE 0 END WHERE type_room = %s"
+                        ), (resident[0],))
+                    cur.execute(self._format_query(
+                        "DELETE FROM residents WHERE email = %s"
+                    ), (email.strip(),))
+                elif name and pin:
+                    cur.execute(self._format_query(
+                        "SELECT room_type FROM residents WHERE name = %s AND pin = %s"
+                    ), (name.strip(), str(pin).strip()))
+                    resident = cur.fetchone()
+                    if resident and resident[0] and resident[0] != "None":
+                        cur.execute(self._format_query(
+                            "UPDATE rooms SET book_rooms = CASE WHEN book_rooms > 0 THEN book_rooms - 1 ELSE 0 END WHERE type_room = %s"
+                        ), (resident[0],))
+                    cur.execute(self._format_query(
+                        "DELETE FROM residents WHERE name = %s AND pin = %s"
+                    ), (name.strip(), str(pin).strip()))
+                elif name:
+                    cur.execute(self._format_query(
+                        "SELECT room_type FROM residents WHERE name = %s"
+                    ), (name.strip(),))
+                    residents = cur.fetchall()
+                    for resident in residents:
+                        if resident[0] and resident[0] != "None":
+                            cur.execute(self._format_query(
+                                "UPDATE rooms SET book_rooms = CASE WHEN book_rooms > 0 THEN book_rooms - 1 ELSE 0 END WHERE type_room = %s"
+                            ), (resident[0],))
+                    cur.execute(self._format_query(
+                        "DELETE FROM residents WHERE name = %s"
+                    ), (name.strip(),))
+                cur.close()
+        finally:
+            conn.close()
 
     def update_resident_details(self, resident_id, name, email):
         """Update editable resident identity fields without exposing credentials."""
