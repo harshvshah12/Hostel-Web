@@ -688,7 +688,10 @@ def residentLogin():
             session['user_role'] = 'resident'
             return redirect('/resident')
         else:
-            return render_template("Resident/loginResident.html", error="Invalid resident credentials. Please check your email and password.")
+            return render_template(
+                "Resident/loginResident.html",
+                error="Invalid email or password. If you applied for hostel residence recently, please wait for manager approval before signing in."
+            )
     return render_template("Resident/loginResident.html")
 
 
