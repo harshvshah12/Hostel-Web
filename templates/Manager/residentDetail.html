@@ -176,8 +176,10 @@
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">Residents Detail</h1>
     </div>
-    <p class="mb-4">Here is the complete Data of All Registered Residents that data contains Name,Email Id and Password
-        of Accounts.Any <a class="text-success" href="#">Updates </a>in Data You Can See Here.</p>
+    <p class="mb-4">Edit resident details, assign or unassign rooms, and review current occupancy. Passwords are intentionally hidden.</p>
+    {% with notices = get_flashed_messages(with_categories=true) %}
+      {% for category, message in notices %}<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">{{ message }}<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>{% endfor %}
+    {% endwith %}
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-success">Data of Registered Residents</h6>
@@ -190,30 +192,49 @@
                             <th>#</th>
                             <th>Name of Resident</th>
                             <th>Email of Resident</th>
-                            <th>Password</th>
+                            <th>Manage Resident</th>
                             <th>Room No</th>
                             <th>Room Type</th>
                             <th>Expenditures</th>
-                            <th>Action</th>
+                            <th>Room Assignment</th><th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for id in MyList %}
                         <tr>
-                           <form action="/deleteResident" method="POST">
-                            <input type="hidden" name="name" value="{{ id.name }}">
-                            <input type="hidden" name="pin" value="{{ id.pin }}">
-                            <td>{{ loop.index }}</td>
+                           <td>{{ loop.index }}</td>
                             <td><strong>{{ id.name }}</strong></td>
                             <td>{{ id.email }}</td>
-                            <td><code>{{ id.pin }}</code></td>
-                            <td><span class="badge badge-success">{{ id.roomNo }}</span></td>
-                            <td>{{ id.roomType }}</td>
+                            <td>
+                              <form action="/manager/update-resident" method="POST" class="d-flex flex-column" style="min-width:210px;gap:6px;">
+                                <input type="hidden" name="resident_id" value="{{ id.id }}">
+                                <input class="form-control form-control-sm" name="name" value="{{ id.name }}" required aria-label="Resident name">
+                                <input class="form-control form-control-sm" type="email" name="email" value="{{ id.email }}" required aria-label="Resident email">
+                                <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-save"></i> Save details</button>
+                              </form>
+                            </td>
+                            <td><span class="badge badge-success">{{ id.roomNo if id.roomNo else 'Unassigned' }}</span></td>
+                            <td>{{ id.roomType if id.roomType else 'None' }}</td>
                             <td>₹{{ id.expenditures }}</td>
-                            <td><button type="submit" style="box-shadow: none;" class="btn btn-danger btn-sm" onclick="return confirm('Delete resident {{ id.name }}?');">
-                                <i class="fas fa-trash"></i>
-                            </button></td>
-                            </form>
+                            <td>
+                              <form action="/manager/assign-room" method="POST" class="d-flex flex-column" style="min-width:180px;gap:6px;">
+                                <input type="hidden" name="resident_id" value="{{ id.id }}">
+                                <select class="form-control form-control-sm" name="room_type" required>
+                                  <option value="None" {% if not id.roomType or id.roomType == 'None' %}selected{% endif %}>Unassign room</option>
+                                  {% for room in rooms %}
+                                  <option value="{{ room.typeRoom }}" {% if id.roomType == room.typeRoom %}selected{% endif %}>{{ room.typeRoom }} ({{ room.bookRooms }}/{{ room.totalRooms }} occupied)</option>
+                                  {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-info btn-sm">Assign / Update</button>
+                              </form>
+                            </td>
+                            <td>
+                              <form action="/deleteResident" method="POST">
+                                <input type="hidden" name="name" value="{{ id.name }}">
+                                <input type="hidden" name="email" value="{{ id.email }}">
+                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete resident {{ id.name }}? This cannot be undone.');"><i class="fas fa-trash"></i> Delete</button>
+                              </form>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
