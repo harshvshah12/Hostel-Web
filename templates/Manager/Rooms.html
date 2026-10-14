@@ -178,6 +178,10 @@
             <h6 class="m-0 font-weight-bold text-success">Add A Room's Type</h6>
         </div>
         <div class="card-body">
+            {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+            {% with notices = get_flashed_messages(with_categories=true) %}
+              {% for category, message in notices %}<div class="alert alert-{{ category }}" role="alert">{{ message }}</div>{% endfor %}
+            {% endwith %}
             <form class="user m-2 p-4" action="/addanewmyRoom" method="POST">
                 <div class="form-group">
                     <input type="text" name="typeR" class="form-control form-control-user" required="required"
