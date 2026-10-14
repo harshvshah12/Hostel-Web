@@ -136,21 +136,16 @@ def ownerLogin():
 def owner():
     owner_email = session.get('owner_email')
     try:
-        # Fetch each collection once. The previous route fetched both lists,
-        # then re-fetched them inside totalexpenditures()/totalsalaries(),
-        # multiplying database round trips on every owner dashboard load.
-        residents = db.get_residents()
-        staff = db.get_workers()
-        total_income = sum(float(getattr(r, "expenditures", 0) or 0) for r in residents)
-        total_salary = sum(float(getattr(w, "salary", 0) or 0) for w in staff)
-
+        # Dashboard cards only need aggregate metrics. Avoid loading all
+        # residents and their ordered-food history just to count records.
+        stats = db.get_owner_dashboard_stats()
         return render_template(
             "Owner/owner.html",
             variable=owner_email,
-            residents=len(residents),
-            workers=len(staff),
-            totalincome=total_income,
-            totalsalary=total_salary
+            residents=stats["residents"],
+            workers=stats["workers"],
+            totalincome=stats["totalincome"],
+            totalsalary=stats["totalsalary"]
         )
     except Exception:
         app.logger.exception("Owner dashboard data loading failed")
