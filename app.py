@@ -469,7 +469,8 @@ def addFoodAction():
 def managerResidents():
     email = session.get('manager_email')
     residents = db.get_residents()
-    return render_template("Manager/residentDetail.html", variable=email, MyList=residents, My_List=residents, myList=residents)
+    rooms = db.get_rooms()
+    return render_template("Manager/residentDetail.html", variable=email, MyList=residents, My_List=residents, myList=residents, rooms=rooms)
 
 
 @app.route("/deleteResident", methods=['POST', 'GET'])
@@ -480,6 +481,29 @@ def deleteResident():
         pin = request.form.get('pin', '').strip()
         email = request.form.get('email', '').strip()
         db.delete_resident(name, pin, email)
+    return redirect("/residents")
+
+
+@app.route("/manager/update-resident", methods=["POST"])
+@login_required(role="manager")
+def updateResidentByManager():
+    success, message = db.update_resident_details(
+        request.form.get("resident_id"),
+        request.form.get("name"),
+        request.form.get("email")
+    )
+    flash(message, "success" if success else "danger")
+    return redirect("/residents")
+
+
+@app.route("/manager/assign-room", methods=["POST"])
+@login_required(role="manager")
+def assignRoomByManager():
+    success, message = db.assign_room_to_resident(
+        request.form.get("resident_id"),
+        request.form.get("room_type")
+    )
+    flash(message, "success" if success else "danger")
     return redirect("/residents")
 
 
@@ -510,13 +534,27 @@ def managerRooms():
     return render_template("Manager/roomsDetail.html", variable=email, MyList=rooms, My_List=rooms, myList=rooms)
 
 
-@app.route("/deleteRoom", methods=['POST', 'GET'])
+@app.route("/manager/update-room", methods=["POST"])
+@login_required(role="manager")
+def updateRoomByManager():
+    success, message = db.update_room(
+        request.form.get("room_id"),
+        request.form.get("typeR"),
+        request.form.get("priceR"),
+        request.form.get("totalR"),
+        request.form.get("startingR")
+    )
+    flash(message, "success" if success else "danger")
+    return redirect("/Rooms")
+
+
+@app.route("/deleteRoom", methods=['POST'])
 @login_required(role='manager')
 def deleteRoom():
-    if request.method == 'POST':
-        type_r = request.form.get('typeroom', '').strip()
-        if type_r:
-            db.delete_room(type_r)
+    type_r = request.form.get('typeroom', '').strip()
+    if type_r:
+        success, message = db.delete_room(type_r)
+        flash(message, "success" if success else "danger")
     return redirect("/Rooms")
 
 
@@ -611,16 +649,20 @@ def addRoomPage():
     return render_template("Manager/Rooms.html")
 
 
-@app.route("/addanewmyRoom", methods=['POST', 'GET'])
-@login_required(role='manager')
+@app.route("/addanewmyRoom", methods=["POST", "GET"])
+@login_required(role="manager")
 def addNewRoom():
     if request.method == "POST":
-        type_r = request.form.get('typeR', '').strip()
-        price_r = request.form.get('priceR', 0)
-        total_r = request.form.get('totalR', 0)
-        starting_r = request.form.get('startingR', 0)
-        db.add_room(type_r, price_r, total_r, starting_r)
-        return redirect("/Rooms")
+        success, message = db.add_room(
+            request.form.get("typeR", ""),
+            request.form.get("priceR", ""),
+            request.form.get("totalR", ""),
+            request.form.get("startingR", "")
+        )
+        flash(message, "success" if success else "danger")
+        if success:
+            return redirect("/Rooms")
+        return render_template("Manager/Rooms.html", error=message)
     return render_template("Manager/Rooms.html")
 
 
