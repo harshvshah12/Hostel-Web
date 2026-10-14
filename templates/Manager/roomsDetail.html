@@ -171,7 +171,11 @@
 {% block body %}
 <div class="container">
     <!-- Page Heading -->
-    <h1 class="h3 mb-2 text-gray-800">Rooms</h1>
+    <h1 class="h3 mb-2 text-gray-800">Room Management</h1>
+    {% with notices = get_flashed_messages(with_categories=true) %}
+      {% for category, message in notices %}<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">{{ message }}<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>{% endfor %}
+    {% endwith %}
+    <a class="btn btn-success mb-3" href="/changinRoom"><i class="fas fa-plus"></i> Add room category</a>
     <p class="mb-4">Here You can Add any Room if You Want.
         You will show here Price , Total Rooms and Type of Room etc.You Can
         <a class="text-success" href="#">Update</a> in Room.
@@ -193,25 +197,33 @@
                             <th>Booked Rooms</th>
                             <th>Available Rooms</th>
                             <th>Starting Room No</th>
-                            <th>Action</th>
+                            <th>Manage / Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for room in MyList %}
                         <tr>  
-                           <form action="/deleteRoom" method="POST">
-                            <input type="hidden" name="typeroom" value="{{ room.typeRoom }}">
-                            <td>{{ loop.index }}</td>
+                           <td>{{ loop.index }}</td>
                             <td><strong>{{ room.typeRoom }}</strong></td>
                             <td>₹{{ room.priceRoom }}</td>
                             <td>{{ room.totalRooms }}</td>
                             <td><span class="badge badge-warning">{{ room.bookRooms }}</span></td>
                             <td><span class="badge badge-success">{{ room.totalRooms - room.bookRooms }}</span></td>
                             <td>{{ room.startingRoom }}</td>
-                            <td><button type="submit" style="box-shadow: none;" class="btn btn-danger btn-sm" onclick="return confirm('Delete room category {{ room.typeRoom }}?');">
-                                <i class="fas fa-trash"></i>
-                            </button></td>
-                            </form>
+                            <td>
+                              <form action="/manager/update-room" method="POST" class="d-flex flex-column" style="min-width:220px;gap:5px;">
+                                <input type="hidden" name="room_id" value="{{ room.id }}">
+                                <input class="form-control form-control-sm" name="typeR" value="{{ room.typeRoom }}" required aria-label="Room type">
+                                <input class="form-control form-control-sm" type="number" name="priceR" min="0" step="0.01" value="{{ room.priceRoom }}" required aria-label="Room price">
+                                <input class="form-control form-control-sm" type="number" name="totalR" min="{{ room.bookRooms }}" value="{{ room.totalRooms }}" required aria-label="Total rooms">
+                                <input class="form-control form-control-sm" type="number" name="startingR" min="1" value="{{ room.startingRoom }}" required aria-label="Starting room number">
+                                <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-save"></i> Save changes</button>
+                              </form>
+                              <form action="/deleteRoom" method="POST" class="mt-2">
+                                <input type="hidden" name="typeroom" value="{{ room.typeRoom }}">
+                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete room category {{ room.typeRoom }}? Only categories without assigned residents can be deleted.');"><i class="fas fa-trash"></i> Delete</button>
+                              </form>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
