@@ -568,28 +568,58 @@ class Database:
         return residents
 
     def get_resident(self, email, pin=None):
-        """Retrieve resident. Verifies and auto-upgrades legacy password to hash if matched."""
+        """Retrieve resident using one bounded database connection."""
         if not email:
             return None
+
         clean_email = email.strip()
-        rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures, id FROM residents WHERE email = %s", (clean_email,))
-        if not rows:
-            return None
-
-        r = rows[0]
-        stored_pin = str(r[2])
-
-        if pin is not None:
-            if not verify_pin(stored_pin, pin):
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                self._format_query(
+                    "SELECT name, email, pin, room_no, room_type, expenditures, id "
+                    "FROM residents WHERE email = %s"
+                ),
+                (clean_email,)
+            )
+            r = cur.fetchone()
+            if not r:
+                cur.close()
                 return None
-            if not stored_pin.startswith(("pbkdf2:", "scrypt:", "argon2:")):
-                self.update_resident_pin(clean_email, pin)
 
-        person = Id(r[0], r[1], stored_pin, r[3], r[4], r[5], id=r[6])
-        order_rows = self.query("SELECT food_name, quantity, price, id FROM ordered_foods WHERE resident_name = %s", (r[0],))
-        for of in order_rows:
-            person.addOrderedFood(of[0], of[1], of[2])
-        return person
+            stored_pin = str(r[2])
+            if pin is not None:
+                if not verify_pin(stored_pin, pin):
+                    cur.close()
+                    return None
+
+                # Upgrade legacy plain-text credentials without opening a
+                # second connection for the update.
+                if not stored_pin.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+                    stored_pin = hash_pin(pin)
+                    cur.execute(
+                        self._format_query("UPDATE residents SET pin = %s WHERE email = %s"),
+                        (stored_pin, clean_email)
+                    )
+                    conn.commit()
+
+            cur.execute(
+                self._format_query(
+                    "SELECT food_name, quantity, price, id FROM ordered_foods "
+                    "WHERE resident_name = %s"
+                ),
+                (r[0],)
+            )
+            order_rows = cur.fetchall()
+            cur.close()
+
+            person = Id(r[0], r[1], stored_pin, r[3], r[4], r[5], id=r[6])
+            for of in order_rows:
+                person.addOrderedFood(of[0], of[1], of[2])
+            return person
+        finally:
+            conn.close()
 
     def add_resident(self, name, email, pin, room_no=0, room_type="None", expen=0):
         """Register a resident. Validates inputs, prevents duplicate email, and hashes password."""
