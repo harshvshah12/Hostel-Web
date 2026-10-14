@@ -135,16 +135,29 @@ def ownerLogin():
 @login_required(role='owner')
 def owner():
     owner_email = session.get('owner_email')
-    residents = db.get_residents()
-    staff = db.get_workers()
-    return render_template(
-        "Owner/owner.html",
-        variable=owner_email,
-        residents=len(residents),
-        workers=len(staff),
-        totalincome=totalexpenditures(),
-        totalsalary=totalsalaries()
-    )
+    try:
+        # Fetch each collection once. The previous route fetched both lists,
+        # then re-fetched them inside totalexpenditures()/totalsalaries(),
+        # multiplying database round trips on every owner dashboard load.
+        residents = db.get_residents()
+        staff = db.get_workers()
+        total_income = sum(float(getattr(r, "expenditures", 0) or 0) for r in residents)
+        total_salary = sum(float(getattr(w, "salary", 0) or 0) for w in staff)
+
+        return render_template(
+            "Owner/owner.html",
+            variable=owner_email,
+            residents=len(residents),
+            workers=len(staff),
+            totalincome=total_income,
+            totalsalary=total_salary
+        )
+    except Exception:
+        app.logger.exception("Owner dashboard data loading failed")
+        return (
+            "The owner dashboard could not load its data. Please refresh and try again.",
+            503
+        )
 
 
 @app.route("/createAccountManager")
