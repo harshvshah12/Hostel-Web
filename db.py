@@ -151,18 +151,24 @@ class Database:
                 self.sqlite_path = os.path.join(data_dir, "hostel.db")
             print(f"[DB] Using Local SQLite Database at {self.sqlite_path}")
 
-        self.init_tables()
-        self.seed_if_empty()
+        # Vercel serverless functions may cold-start frequently. The production
+        # Supabase schema is managed by migrations, so avoid running DDL and a
+        # full seed scan during every module import / login request.
+        if os.environ.get("VERCEL") and self.is_postgres:
+            print("[DB] Skipping runtime schema bootstrap on Vercel; using migration-managed schema")
+        else:
+            self.init_tables()
+            self.seed_if_empty()
 
     def get_connection(self):
         """Get an active database connection with row access."""
         if self.is_postgres:
             try:
                 import psycopg2
-                import psycopg2.extras
-                conn = psycopg2.connect(self.conn_str)
-                return conn
-            except Exception:
+            except ImportError:
+                # Fallback only when psycopg2 is not installed. Do not retry a
+                # failed network connection with a second driver and double the
+                # wait time on every authentication request.
                 import pg8000
                 p = urlparse(self.conn_str)
                 return pg8000.connect(
@@ -171,8 +177,17 @@ class Database:
                     host=p.hostname,
                     port=p.port or 5432,
                     database=p.path.lstrip("/"),
+                    timeout=5,
                     ssl_context=True
                 )
+
+            # Bound connection establishment and query execution so a database
+            # outage cannot leave the browser waiting indefinitely.
+            return psycopg2.connect(
+                self.conn_str,
+                connect_timeout=5,
+                options="-c statement_timeout=10000 -c lock_timeout=5000"
+            )
         else:
             conn = sqlite3.connect(self.sqlite_path, timeout=30.0)
             conn.row_factory = sqlite3.Row
