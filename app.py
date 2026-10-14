@@ -112,7 +112,14 @@ def ownerLogin():
     if request.method == 'POST':
         pin = request.form.get('pin', '').strip()
         email = request.form.get('myemail', '').strip()
-        owner_user = db.get_owner(email, pin)
+        try:
+            owner_user = db.get_owner(email, pin)
+        except Exception:
+            app.logger.exception("Owner login database operation failed")
+            return render_template(
+                "Owner/loginOwner.html",
+                error="Login is temporarily unavailable because the database could not be reached. Please try again shortly."
+            ), 503
         if owner_user:
             session.clear()
             session['owner_email'] = owner_user.email
@@ -311,7 +318,14 @@ def managerLogin():
     if request.method == 'POST':
         pin = request.form.get('pin', '').strip()
         email = request.form.get('myemail', '').strip()
-        mgr = db.get_manager(email, pin)
+        try:
+            mgr = db.get_manager(email, pin)
+        except Exception:
+            app.logger.exception("Manager login database operation failed")
+            return render_template(
+                "Manager/loginManager.html",
+                error="Login is temporarily unavailable because the database could not be reached. Please try again shortly."
+            ), 503
         if mgr:
             session.clear()
             session['manager_email'] = mgr.email
@@ -659,7 +673,14 @@ def residentLogin():
     if request.method == 'POST':
         pin = request.form.get('pin', '').strip()
         email = request.form.get('myemail', '').strip()
-        resident = db.get_resident(email, pin)
+        try:
+            resident = db.get_resident(email, pin)
+        except Exception:
+            app.logger.exception("Resident login database operation failed")
+            return render_template(
+                "Resident/loginResident.html",
+                error="Login is temporarily unavailable because the database could not be reached. Please try again shortly."
+            ), 503
         if resident:
             session.clear()
             session['resident_email'] = resident.email
