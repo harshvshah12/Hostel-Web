@@ -673,6 +673,81 @@ class Database:
         elif name:
             self.execute("DELETE FROM residents WHERE name = %s", (name.strip(),))
 
+    def update_resident_details(self, resident_id, name, email):
+        """Update editable resident identity fields without exposing credentials."""
+        clean_name = (name or "").strip()
+        clean_email = (email or "").strip().lower()
+        if not clean_name or not clean_email:
+            return False, "Resident name and email are required."
+        duplicate = self.query(
+            "SELECT id FROM residents WHERE email = %s AND id <> %s",
+            (clean_email, int(resident_id))
+        )
+        if duplicate:
+            return False, "Another resident already uses that email address."
+        self.execute(
+            "UPDATE residents SET name = %s, email = %s WHERE id = %s",
+            (clean_name, clean_email, int(resident_id))
+        )
+        return True, "Resident details updated."
+
+    def assign_room_to_resident(self, resident_id, room_type):
+        """Manager-side room allocation with capacity checks and count maintenance."""
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.cursor()
+                cur.execute(self._format_query(
+                    "SELECT id, room_no, room_type FROM residents WHERE id = %s"
+                ), (int(resident_id),))
+                resident = cur.fetchone()
+                if not resident:
+                    return False, "Resident not found."
+
+                previous_type = resident[2] or "None"
+                clean_type = (room_type or "").strip()
+                if clean_type.lower() in ("", "none", "unassigned"):
+                    if previous_type != "None":
+                        cur.execute(self._format_query(
+                            "UPDATE rooms SET book_rooms = CASE WHEN book_rooms > 0 THEN book_rooms - 1 ELSE 0 END WHERE type_room = %s"
+                        ), (previous_type,))
+                        cur.execute(self._format_query(
+                            "UPDATE residents SET room_no = 0, room_type = 'None' WHERE id = %s"
+                        ), (int(resident_id),))
+                    cur.close()
+                    return True, "Resident is now unassigned from a room."
+
+                cur.execute(self._format_query(
+                    "SELECT id, total_rooms, book_rooms, starting_room FROM rooms WHERE type_room = %s"
+                ), (clean_type,))
+                target = cur.fetchone()
+                if not target:
+                    return False, "Selected room category does not exist."
+                if previous_type == clean_type:
+                    cur.close()
+                    return True, "Resident is already assigned to this room category."
+                total, booked, starting = int(target[1]), int(target[2]), int(target[3])
+                if booked >= total:
+                    return False, "That room category is full. Increase its capacity or choose another category."
+
+                if previous_type and previous_type != "None":
+                    cur.execute(self._format_query(
+                        "UPDATE rooms SET book_rooms = CASE WHEN book_rooms > 0 THEN book_rooms - 1 ELSE 0 END WHERE type_room = %s"
+                    ), (previous_type,))
+                room_no = starting + booked + 1
+                cur.execute(self._format_query(
+                    "UPDATE rooms SET book_rooms = book_rooms + 1 WHERE id = %s"
+                ), (int(target[0]),))
+                cur.execute(self._format_query(
+                    "UPDATE residents SET room_no = %s, room_type = %s WHERE id = %s"
+                ), (room_no, clean_type, int(resident_id)))
+                cur.close()
+            return True, "Room assigned successfully."
+        except Exception:
+            return False, "Room assignment failed. Please retry and check the database logs."
+        finally:
+            conn.close()
+
     def update_resident_pin(self, email, new_pin):
         hashed = hash_pin(new_pin)
         self.execute("UPDATE residents SET pin = %s WHERE email = %s", (hashed, email.strip()))
@@ -744,16 +819,55 @@ class Database:
         return [Rooms(r[0], r[1], r[2], r[3], r[4], id=r[5]) for r in rows]
 
     def add_room(self, type_r, price_r, total_r, starting_r):
-        type_clean = type_r.strip()
+        type_clean = (type_r or "").strip()
+        if not type_clean:
+            return False, "Room category is required."
+        try:
+            price, total, starting = float(price_r), int(total_r), int(starting_r)
+        except (TypeError, ValueError):
+            return False, "Enter valid price, room count, and starting room number."
+        if price < 0 or total < 1 or starting < 1:
+            return False, "Price cannot be negative; room count and starting number must be positive."
         existing = self.query("SELECT id FROM rooms WHERE type_room = %s", (type_clean,))
         if existing:
             return False, f"Room category '{type_clean}' already exists."
         self.execute("INSERT INTO rooms (type_room, price_room, total_rooms, book_rooms, starting_room) VALUES (%s, %s, %s, 0, %s)",
-                     (type_clean, float(price_r), int(total_r), int(starting_r)))
-        return True, "Room added successfully."
+                     (type_clean, price, total, starting))
+        return True, "Room category added successfully."
+
+    def update_room(self, room_id, type_r, price_r, total_r, starting_r):
+        clean_type = (type_r or "").strip()
+        try:
+            price, total, starting = float(price_r), int(total_r), int(starting_r)
+            room_id = int(room_id)
+        except (TypeError, ValueError):
+            return False, "Enter valid room details."
+        if not clean_type or price < 0 or total < 1 or starting < 1:
+            return False, "Room type is required; price must be non-negative and room numbers/counts positive."
+        current = self.query("SELECT type_room, book_rooms FROM rooms WHERE id = %s", (room_id,))
+        if not current:
+            return False, "Room category not found."
+        previous_type, booked = current[0][0], int(current[0][1])
+        if total < booked:
+            return False, f"Total rooms cannot be less than the {booked} currently occupied."
+        duplicate = self.query("SELECT id FROM rooms WHERE type_room = %s AND id <> %s", (clean_type, room_id))
+        if duplicate:
+            return False, "Another room category already uses that name."
+        self.execute(
+            "UPDATE rooms SET type_room = %s, price_room = %s, total_rooms = %s, starting_room = %s WHERE id = %s",
+            (clean_type, price, total, starting, room_id)
+        )
+        if clean_type != previous_type:
+            self.execute("UPDATE residents SET room_type = %s WHERE room_type = %s", (clean_type, previous_type))
+        return True, "Room category updated successfully."
 
     def delete_room(self, type_r):
-        self.execute("DELETE FROM rooms WHERE type_room = %s", (type_r.strip(),))
+        clean_type = (type_r or "").strip()
+        assigned = self.query("SELECT id FROM residents WHERE room_type = %s LIMIT 1", (clean_type,))
+        if assigned:
+            return False, "This room category has residents assigned. Reassign them before deleting it."
+        self.execute("DELETE FROM rooms WHERE type_room = %s", (clean_type,))
+        return True, "Room category deleted."
 
     # --- FOOD METHODS ---
     def get_foods(self):
